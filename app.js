@@ -4,6 +4,8 @@
 const MEDIA_API_URL = 'https://api.github.com/repos/qyct/kadhira/contents/media';
 const RAW_BASE_URL  = 'https://raw.githubusercontent.com/qyct/kadhira/main/media/';
 const LS_KEY        = 'kadhira_last_index';
+const LS_JUMP_KEY   = 'kadhira_last_jump_value';
+const LS_FILE_NUM_KEY = 'kadhira_last_file_number';
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']);
 const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.avi']);
@@ -154,9 +156,16 @@ function buildImageItem(file, item) {
     img.decoding = 'async';
     img.loading  = 'lazy';
 
+    // Set src directly - native lazy loading will handle when to load
+    img.src = RAW_BASE_URL + file.name;
+
     // Fade in on load
     img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
-    img.src = RAW_BASE_URL + file.name;
+
+    // Fallback: if image is already cached/loaded, add loaded class immediately
+    if (img.complete) {
+        img.classList.add('loaded');
+    }
 
     // Double-tap ripple
     let lastTap = 0;
@@ -178,7 +187,7 @@ function buildImageItem(file, item) {
 
 function buildVideoItem(file, item) {
     const video = document.createElement('video');
-    video.src       = RAW_BASE_URL + file.name;
+    video.src = RAW_BASE_URL + file.name;
     video.loop      = true;
     video.playsInline = true;
     video.muted     = false;
@@ -327,15 +336,38 @@ function saveIndex(i) {
     try { localStorage.setItem(LS_KEY, String(i)); } catch (_) {}
 }
 
+/* ── Persist current file number ─────────────────────────── */
+function saveFileNumber(index) {
+    try {
+        if (_allFiles.length > 0 && index >= 0 && index < _allFiles.length) {
+            const filename = _allFiles[index].name;
+            const match = filename.match(/^(\d{4})/);
+            if (match) {
+                localStorage.setItem(LS_FILE_NUM_KEY, match[1]);
+            }
+        }
+    } catch (_) {}
+}
+
 /* ── Counter ─────────────────────────────────────────────── */
 function initCounter(total) {
     const getItems = () => document.querySelectorAll('.media-item');
     let lastSaved = -1;
+    let saveTimeout;
 
     const update = () => {
         const i = currentIndex(getItems());
         counterTextEl.textContent = `${i + 1} / ${total}`;
-        if (i !== lastSaved) { lastSaved = i; saveIndex(i); }
+
+        // Debounce save to wait for scroll to settle
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            if (i !== lastSaved) {
+                lastSaved = i;
+                saveIndex(i);
+                saveFileNumber(i);
+            }
+        }, 300);
     };
 
     galleryEl.addEventListener('scroll', update, { passive: true });
@@ -343,7 +375,9 @@ function initCounter(total) {
     // Also save when tab is hidden / app backgrounded on mobile
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-            saveIndex(currentIndex(getItems()));
+            const i = currentIndex(getItems());
+            saveIndex(i);
+            saveFileNumber(i);
         }
     });
 
@@ -354,8 +388,23 @@ function initCounter(total) {
 let _allFiles = [];
 
 function openJump() {
-    jumpInputEl.value = '';
     jumpErrorEl.textContent = '';
+
+    // Try to load current file number first
+    try {
+        const currentFileNum = localStorage.getItem(LS_FILE_NUM_KEY);
+        if (currentFileNum) {
+            jumpInputEl.value = currentFileNum;
+        } else {
+            // Fallback to current index position
+            const items = document.querySelectorAll('.media-item');
+            const currentIdx = currentIndex(items);
+            jumpInputEl.value = String(currentIdx + 1).padStart(4, '0');
+        }
+    } catch (_) {
+        jumpInputEl.value = '';
+    }
+
     jumpOverlayEl.classList.add('visible');
     setTimeout(() => jumpInputEl.focus(), 60);
 }
@@ -376,7 +425,8 @@ function doJump() {
     // Find any file starting with that number
     const idx = _allFiles.findIndex(f => f.name.startsWith(padded));
     if (idx === -1) {
-        jumpErrorEl.textContent = `No file found for ${padded}`;
+        // No file found - close overlay and stay on current item
+        closeJump();
         return;
     }
     closeJump();
@@ -403,6 +453,10 @@ function initJump(files) {
     jumpInputEl.addEventListener('input', () => {
         jumpInputEl.value = jumpInputEl.value.replace(/\D/g, '').slice(0, 4);
         jumpErrorEl.textContent = '';
+        // Save current value to localStorage
+        try {
+            localStorage.setItem(LS_JUMP_KEY, jumpInputEl.value);
+        } catch (_) {}
     });
 
     // Backdrop tap closes
@@ -417,14 +471,26 @@ function restorePosition(items) {
         const saved = localStorage.getItem(LS_KEY);
         if (saved !== null) {
             const idx = parseInt(saved, 10);
-            if (!isNaN(idx) && idx > 0 && idx < items.length) {
+            if (!isNaN(idx) && idx >= 0 && idx < items.length) {
                 // Double rAF: first frame commits DOM, second frame has layout.
                 // Use galleryEl.scrollTop directly — more reliable than
                 // scrollIntoView on scroll-snap containers before first paint.
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
                         const target = items[idx];
-                        if (target) galleryEl.scrollTop = target.offsetTop;
+                        if (target) {
+                            galleryEl.scrollTop = target.offsetTop;
+
+                            // Force load nearby images by changing loading="lazy" to "eager"
+                            const startIdx = Math.max(0, idx - 2);
+                            const endIdx = Math.min(items.length - 1, idx + 2);
+                            for (let i = startIdx; i <= endIdx; i++) {
+                                const img = items[i].querySelector('img');
+                                if (img) {
+                                    img.loading = 'eager';
+                                }
+                            }
+                        }
                     });
                 });
                 return true;
@@ -501,6 +567,9 @@ async function fetchMedia() {
 
         /* Restore last-seen position */
         restorePosition(itemEls);
+
+        // If no position to restore, native lazy loading will handle it
+        // The first image(s) will load naturally as they enter the viewport
 
     } catch (err) {
         console.error('[kadhira]', err);
