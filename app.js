@@ -59,10 +59,14 @@ function currentIndex(items) {
 /* ── Pinch-zoom & rotate for images ──────────────────────── */
 function initPinchZoom(img, item) {
     let scale = 1, rot = 0;
+    let transX = 0, transY = 0;
     let startDist = 0, startAngle = 0;
     let startScale = 1, startRot = 0;
     let originX = 50, originY = 50; // percent
     let isPinching = false;
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let startTransX = 0, startTransY = 0;
     let resetTimer;
 
     function getTouches(e) { return Array.from(e.touches); }
@@ -87,13 +91,13 @@ function initPinchZoom(img, item) {
     function applyTransform(animated) {
         img.style.transition = animated ? 'transform 0.35s cubic-bezier(0.22,1,0.36,1)' : 'none';
         img.style.transformOrigin = `${originX}% ${originY}%`;
-        img.style.transform = `scale(${scale}) rotate(${rot}deg)`;
+        img.style.transform = `translate(${transX}px, ${transY}px) scale(${scale}) rotate(${rot}deg)`;
     }
 
     function scheduleReset() {
         clearTimeout(resetTimer);
         resetTimer = setTimeout(() => {
-            scale = 1; rot = 0; originX = 50; originY = 50;
+            scale = 1; rot = 0; transX = 0; transY = 0; originX = 50; originY = 50;
             applyTransform(true);
             img.classList.remove('zoomed');
         }, 3000);
@@ -101,48 +105,87 @@ function initPinchZoom(img, item) {
 
     item.addEventListener('touchstart', e => {
         const touches = getTouches(e);
-        if (touches.length !== 2) return;
-        isPinching = true;
-        clearTimeout(resetTimer);
 
-        startDist  = dist(touches[0], touches[1]);
-        startAngle = angle(touches[0], touches[1]);
-        startScale = scale;
-        startRot   = rot;
+        // Two-finger pinch-zoom
+        if (touches.length === 2) {
+            isPinching = true;
+            isDragging = false;
+            clearTimeout(resetTimer);
 
-        // Set transform origin to pinch midpoint
-        const mid = midpoint(touches[0], touches[1]);
-        const rect = item.getBoundingClientRect();
-        originX = ((mid.x - rect.left) / rect.width)  * 100;
-        originY = ((mid.y - rect.top)  / rect.height) * 100;
-        applyTransform(false);
+            startDist  = dist(touches[0], touches[1]);
+            startAngle = angle(touches[0], touches[1]);
+            startScale = scale;
+            startRot   = rot;
+
+            // Set transform origin to pinch midpoint
+            const mid = midpoint(touches[0], touches[1]);
+            const rect = item.getBoundingClientRect();
+            originX = ((mid.x - rect.left) / rect.width)  * 100;
+            originY = ((mid.y - rect.top)  / rect.height) * 100;
+            applyTransform(false);
+        }
+        // Single-finger drag (only when zoomed)
+        else if (touches.length === 1 && scale > 1.05) {
+            isDragging = true;
+            isPinching = false;
+            clearTimeout(resetTimer);
+
+            dragStartX = touches[0].clientX;
+            dragStartY = touches[0].clientY;
+            startTransX = transX;
+            startTransY = transY;
+        }
     }, { passive: true });
 
     item.addEventListener('touchmove', e => {
         const touches = getTouches(e);
-        if (touches.length !== 2 || !isPinching) return;
-        e.stopPropagation();
 
-        const newDist  = dist(touches[0], touches[1]);
-        const newAngle = angle(touches[0], touches[1]);
+        // Handle pinch-zoom
+        if (touches.length === 2 && isPinching) {
+            e.stopPropagation();
 
-        scale = Math.min(Math.max(startScale * (newDist / startDist), 0.8), 5);
-        rot   = startRot + (newAngle - startAngle);
+            const newDist  = dist(touches[0], touches[1]);
+            const newAngle = angle(touches[0], touches[1]);
 
-        img.classList.add('zoomed');
-        applyTransform(false);
+            scale = Math.min(Math.max(startScale * (newDist / startDist), 0.8), 5);
+            rot   = startRot + (newAngle - startAngle);
+
+            img.classList.add('zoomed');
+            applyTransform(false);
+        }
+        // Handle single-finger drag
+        else if (touches.length === 1 && isDragging) {
+            e.stopPropagation();
+
+            const dx = touches[0].clientX - dragStartX;
+            const dy = touches[0].clientY - dragStartY;
+
+            transX = startTransX + dx;
+            transY = startTransY + dy;
+
+            img.classList.add('zoomed');
+            applyTransform(false);
+        }
     }, { passive: true });
 
     item.addEventListener('touchend', e => {
-        if (!isPinching) return;
         const touches = getTouches(e);
-        if (touches.length < 2) {
+
+        // End pinch-zoom
+        if (isPinching && touches.length < 2) {
             isPinching = false;
             if (scale <= 1.05) {
-                scale = 1; rot = 0; originX = 50; originY = 50;
+                scale = 1; rot = 0; transX = 0; transY = 0; originX = 50; originY = 50;
                 applyTransform(true);
                 img.classList.remove('zoomed');
             } else {
+                scheduleReset();
+            }
+        }
+        // End drag
+        else if (isDragging && touches.length === 0) {
+            isDragging = false;
+            if (scale > 1.05) {
                 scheduleReset();
             }
         }
