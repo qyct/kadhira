@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#080808">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Kadhira</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="loading" class="loading">
+        <div class="loading-inner">
+            <div class="film-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <p class="loading-label">Loading memories</p>
+        </div>
+    </div>
+
+    <header id="site-header" class="site-header" aria-hidden="true">
+        <span>Kadhira</span>
+    </header>
+
+    <div id="gallery" class="gallery" role="main" aria-label="Memory gallery"></div>
+
+    <div id="error" class="error" role="alert" style="display:none;"></div>
+
+    <div id="counter" class="counter" aria-live="polite" style="display:none;">
+        <span id="counter-text">1 / 1</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
