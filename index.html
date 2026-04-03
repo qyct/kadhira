@@ -38,6 +38,29 @@
         <span id="counter-text">1 / 1</span>
     </div>
 
+    <!-- Jump-to-number overlay -->
+    <div id="jump-overlay" class="jump-overlay" role="dialog" aria-modal="true" aria-label="Jump to file number">
+        <div class="jump-panel">
+            <p class="jump-label">Go to memory</p>
+            <div class="jump-input-row">
+                <input
+                    id="jump-input"
+                    class="jump-input"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="4"
+                    placeholder="0001"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <button id="jump-btn" class="jump-go" aria-label="Go">Go</button>
+            </div>
+            <p id="jump-error" class="jump-error" role="alert"></p>
+            <button id="jump-cancel" class="jump-cancel">cancel</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
