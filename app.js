@@ -322,16 +322,31 @@ function initKeyboard() {
     });
 }
 
+/* ── Persist current index ───────────────────────────────── */
+function saveIndex(i) {
+    try { localStorage.setItem(LS_KEY, String(i)); } catch (_) {}
+}
+
 /* ── Counter ─────────────────────────────────────────────── */
 function initCounter(total) {
-    const items = () => document.querySelectorAll('.media-item');
+    const getItems = () => document.querySelectorAll('.media-item');
+    let lastSaved = -1;
+
     const update = () => {
-        const i = currentIndex(items());
+        const i = currentIndex(getItems());
         counterTextEl.textContent = `${i + 1} / ${total}`;
-        // Persist last-seen index
-        try { localStorage.setItem(LS_KEY, String(i)); } catch (_) {}
+        if (i !== lastSaved) { lastSaved = i; saveIndex(i); }
     };
+
     galleryEl.addEventListener('scroll', update, { passive: true });
+
+    // Also save when tab is hidden / app backgrounded on mobile
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            saveIndex(currentIndex(getItems()));
+        }
+    });
+
     update();
 }
 
@@ -403,8 +418,15 @@ function restorePosition(items) {
         if (saved !== null) {
             const idx = parseInt(saved, 10);
             if (!isNaN(idx) && idx > 0 && idx < items.length) {
-                // Use instant scroll to avoid flash
-                items[idx]?.scrollIntoView({ behavior: 'instant' });
+                // Double rAF: first frame commits DOM, second frame has layout.
+                // Use galleryEl.scrollTop directly — more reliable than
+                // scrollIntoView on scroll-snap containers before first paint.
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const target = items[idx];
+                        if (target) galleryEl.scrollTop = target.offsetTop;
+                    });
+                });
                 return true;
             }
         }
